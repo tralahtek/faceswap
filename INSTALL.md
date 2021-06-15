@@ -16,7 +16,7 @@
       - [Entering your virtual environment](#entering-your-virtual-environment)
     - [faceswap](#faceswap)
       - [Easy install](#easy-install)
-      - [Manual install](#manual-install)
+      - [Manual install](#manual-install-1)
   - [Running faceswap](#running-faceswap)
   - [Create a desktop shortcut](#create-a-desktop-shortcut)
   - [Updating faceswap](#updating-faceswap)
@@ -43,7 +43,7 @@ The type of computations that the process does are well suited for graphics card
     - Laptop CPUs can often run the software, but will not be fast enough to train at reasonable speeds
 - **A powerful GPU**
     - Currently, Nvidia GPUs are fully supported. and AMD graphics cards are partially supported through plaidML.
-    - If using an Nvidia GPU, then it needs to support at least CUDA Compute Capability 3.0 or higher.
+    - If using an Nvidia GPU, then it needs to support at least CUDA Compute Capability 3.5. (Release 1.0 will work on Compute Capability 3.0)
       To see which version your GPU supports, consult this list: https://developer.nvidia.com/cuda-gpus
       Desktop cards later than the 7xx series are most likely supported.
 - **A lot of patience**
@@ -93,9 +93,9 @@ Reboot your PC, so that everything you have just installed gets registered.
 - Select "Create" at the bottom
 - In the pop up:
     - Give it the name: faceswap
-    - **IMPORTANT**: Select python version 3.7
-    - Hit "Create" (NB: This may take a while as it will need to download Python 3.7)
-![Anaconda virtual env setup](https://i.imgur.com/59RHnLs.png)
+    - **IMPORTANT**: Select python version 3.8
+    - Hit "Create" (NB: This may take a while as it will need to download Python)
+![Anaconda virtual env setup](https://i.imgur.com/CLIDDfa.png)
 
 #### Entering your virtual environment
 To enter the virtual environment:
@@ -115,11 +115,12 @@ To enter the virtual environment:
 
 #### Manual install
 Do not follow these steps if the Easy Install above completed succesfully.
+If you are using an Nvidia card make sure you have the correct versions of Cuda/cuDNN installed for the required version of Tensorflow
 - Install tkinter (required for the GUI) by typing: `conda install tk`
-- Install requirements: `pip install -r requirements.txt`
-- Install Tensorflow (either GPU or CPU version depending on your setup):
-    - GPU Version: `conda install tensorflow-gpu`
-    - Non GPU Version: `conda install tensorflow`
+- Install requirements:
+  - For Nvidia GPU users: `pip install -r requirements_nvidia.txt`
+  - For AMD GPU users: `pip install -r requirements_amd.txt`
+  - For CPU users: `pip install -r requirements_cpu.txt`
 
 ## Running faceswap
 - If you are not already in your virtual environment follow [these steps](#entering-your-virtual-environment)
@@ -154,7 +155,7 @@ Obtain git for your distribution from the [git website](https://git-scm.com/down
 The recommended install method is to use a Conda3 Environment as this will handle the installation of Nvidia's CUDA and cuDNN straight into your Conda Environment. This is by far the easiest and most reliable way to setup the project.
   - MiniConda3 is recommended: [MiniConda3](https://docs.conda.io/en/latest/miniconda.html)
   
-Alternatively you can install Python (>= 3.6-3.7 64-bit) for your distribution (links below.) If you go down this route and are using an Nvidia GPU you should install CUDA (https://developer.nvidia.com/cuda-zone) and cuDNN (https://developer.nvidia.com/cudnn). for your system. If you do not plan to build Tensorflow yourself, make sure you install no higher than version 10.0 of CUDA and 7.5.x of CUDNN.
+Alternatively you can install Python (>= 3.7-3.8 64-bit) for your distribution (links below.) If you go down this route and are using an Nvidia GPU you should install CUDA (https://developer.nvidia.com/cuda-zone) and cuDNN (https://developer.nvidia.com/cudnn). for your system. If you do not plan to build Tensorflow yourself, make sure you install the correct Cuda and cuDNN package for the currently installed version of Tensorflow (Current release: Tensorflow 2.2. Release v1.0: Tensorflow 1.15). You can check for the compatible versions here: (https://www.tensorflow.org/install/source#gpu).
   - Python distributions:
     - apt/yum install python3 (Linux)
     - [Installer](https://www.python.org/downloads/release/python-368/) (Windows)
@@ -192,7 +193,7 @@ CUDA with Docker in 20 minutes.
 INFO    The tool provides tips for installation
         and installs required python packages
 INFO    Setup in Linux 4.14.39-1-MANJARO
-INFO    Installed Python: 3.6.5 64bit
+INFO    Installed Python: 3.7.5 64bit
 INFO    Installed PIP: 10.0.1
 Enable  Docker? [Y/n] 
 INFO    Docker Enabled
@@ -232,7 +233,9 @@ INFO    1. Install Docker
             deepfakes-gpu
         
         1. Open a new terminal to interact with the project
-        docker exec faceswap-gpu python /srv/faceswap.py gui
+        docker exec -it deepfakes-gpu /bin/bash
+	# Launch deepfakes gui (Answer 3 for NVIDIA at the prompt)
+	python3.8 /srv/faceswap.py gui
 ```
 
 A successful setup log, without docker.
@@ -240,7 +243,7 @@ A successful setup log, without docker.
 INFO    The tool provides tips for installation
         and installs required python packages
 INFO    Setup in Linux 4.14.39-1-MANJARO
-INFO    Installed Python: 3.6.5 64bit
+INFO    Installed Python: 3.7.5 64bit
 INFO    Installed PIP: 10.0.1
 Enable  Docker? [Y/n] n
 INFO    Docker Disabled

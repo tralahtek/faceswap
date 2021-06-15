@@ -7,7 +7,7 @@ import sys
 
 from tqdm import tqdm
 
-from lib.image import encode_image_with_hash, ImagesLoader, ImagesSaver
+from lib.image import encode_image, generate_thumbnail, ImagesLoader, ImagesSaver
 from lib.multithreading import MultiThread
 from lib.utils import get_folder
 from plugins.extract.pipeline import Extractor, ExtractMedia
@@ -38,8 +38,8 @@ class Extract():  # pylint:disable=too-few-public-methods
     def __init__(self, arguments):
         logger.debug("Initializing %s: (args: %s", self.__class__.__name__, arguments)
         self._args = arguments
-
-        self._output_dir = str(get_folder(self._args.output_dir))
+        self._output_dir = None if self._args.skip_saving_faces else str(get_folder(
+            self._args.output_dir))
 
         logger.info("Output Directory: %s", self._args.output_dir)
         self._images = ImagesLoader(self._args.input_dir, fast_count=True)
@@ -51,14 +51,19 @@ class Extract():  # pylint:disable=too-few-public-methods
         self._post_process = PostProcess(arguments)
         configfile = self._args.configfile if hasattr(self._args, "configfile") else None
         normalization = None if self._args.normalization == "none" else self._args.normalization
+
+        maskers = ["components", "extended"]
+        maskers += self._args.masker if self._args.masker else []
         self._extractor = Extractor(self._args.detector,
                                     self._args.aligner,
-                                    [self._args.masker, "components", "extended"],
+                                    maskers,
                                     configfile=configfile,
                                     multiprocess=not self._args.singleprocess,
+                                    exclude_gpus=self._args.exclude_gpus,
                                     rotate_images=self._args.rotate_images,
                                     min_size=self._args.min_size,
-                                    normalize_method=normalization)
+                                    normalize_method=normalization,
+                                    re_feed=self._args.re_feed)
         self._threads = list()
         self._verify_output = False
         logger.debug("Initialized %s", self.__class__.__name__)
@@ -106,7 +111,7 @@ class Extract():  # pylint:disable=too-few-public-methods
     def process(self):
         """ The entry point for triggering the Extraction Process.
 
-        Should only be called from  :class:`lib.cli.ScriptExecutor`
+        Should only be called from  :class:`lib.cli.launcher.ScriptExecutor`
         """
         logger.info('Starting, this may take a while...')
         # from lib.queue_manager import queue_manager ; queue_manager.debug_monitor(3)
@@ -189,7 +194,8 @@ class Extract():  # pylint:disable=too-few-public-methods
         processing.
         """
         size = self._args.size if hasattr(self._args, "size") else 256
-        saver = ImagesSaver(self._output_dir, as_bytes=True)
+        saver = None if self._args.skip_saving_faces else ImagesSaver(self._output_dir,
+                                                                      as_bytes=True)
         exception = False
 
         for phase in range(self._extractor.passes):
@@ -223,7 +229,8 @@ class Extract():  # pylint:disable=too-few-public-methods
             if not is_final:
                 logger.debug("Reloading images")
                 self._threaded_redirector("reload", detected_faces)
-        saver.close()
+        if not self._args.skip_saving_faces:
+            saver.close()
 
     def _check_thread_error(self):
         """ Check if any errors have occurred in the running threads and their errors """
@@ -233,7 +240,8 @@ class Extract():  # pylint:disable=too-few-public-methods
     def _output_processing(self, extract_media, size):
         """ Prepare faces for output
 
-        Loads the aligned face, perform any processing actions and verify the output.
+        Loads the aligned face, generate the thumbnail, perform any processing actions and verify
+        the output.
 
         Parameters
         ----------
@@ -243,8 +251,10 @@ class Extract():  # pylint:disable=too-few-public-methods
             The size that the aligned face should be created at
         """
         for face in extract_media.detected_faces:
-            face.load_aligned(extract_media.image, size=size)
-
+            face.load_aligned(extract_media.image,
+                              size=size,
+                              centering="head")
+            face.thumbnail = generate_thumbnail(face.aligned.face, size=96, quality=60)
         self._post_process.do_actions(extract_media)
         extract_media.remove_image()
 
@@ -272,12 +282,21 @@ class Extract():  # pylint:disable=too-few-public-methods
         """
         logger.trace("Outputting faces for %s", extract_media.filename)
         final_faces = list()
-        filename, extension = os.path.splitext(os.path.basename(extract_media.filename))
+        filename = os.path.splitext(os.path.basename(extract_media.filename))[0]
+        extension = ".png"
+
         for idx, face in enumerate(extract_media.detected_faces):
             output_filename = "{}_{}{}".format(filename, str(idx), extension)
-            face.hash, image = encode_image_with_hash(face.aligned_face, extension)
+            meta = dict(alignments=face.to_png_meta(),
+                        source=dict(alignments_version=self._alignments.version,
+                                    original_filename=output_filename,
+                                    face_index=idx,
+                                    source_filename=os.path.basename(extract_media.filename),
+                                    source_is_video=self._images.is_video))
+            image = encode_image(face.aligned.face, extension, metadata=meta)
 
-            saver.save(output_filename, image)
+            if not self._args.skip_saving_faces:
+                saver.save(output_filename, image)
             final_faces.append(face.to_alignment())
         self._alignments.data[os.path.basename(extract_media.filename)] = dict(faces=final_faces)
         del extract_media

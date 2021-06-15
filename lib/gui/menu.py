@@ -1,6 +1,7 @@
 #!/usr/bin python3
 """ The Menu Bars for faceswap GUI """
 
+import gettext
 import locale
 import logging
 import os
@@ -9,28 +10,29 @@ import tkinter as tk
 from tkinter import ttk
 import webbrowser
 
-from importlib import import_module
 from subprocess import Popen, PIPE, STDOUT
 
 from lib.multithreading import MultiThread
 from lib.serializer import get_serializer
+from lib.utils import FaceswapError
 import update_deps
 
-from .popup_configure import popup_config
+from .popup_configure import open_popup
 from .custom_widgets import Tooltip
 from .utils import get_config, get_images
 
-_RESOURCES = [("faceswap.dev - Guides and Forum", "https://www.faceswap.dev"),
-              ("Patreon - Support this project", "https://www.patreon.com/faceswap"),
-              ("Discord - The FaceSwap Discord server", "https://discord.gg/VasFUAy"),
-              ("Github - Our Source Code", "https://github.com/deepfakes/faceswap")]
+logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-_CONFIG_FILES = []
-_CONFIGS = dict()
+# LOCALES
+_LANG = gettext.translation("gui.tooltips", localedir="locales", fallback=True)
+_ = _LANG.gettext
+
 _WORKING_DIR = os.path.dirname(os.path.realpath(sys.argv[0]))
 
-
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+_RESOURCES = [(_("faceswap.dev - Guides and Forum"), "https://www.faceswap.dev"),
+              (_("Patreon - Support this project"), "https://www.patreon.com/faceswap"),
+              (_("Discord - The FaceSwap Discord server"), "https://discord.gg/VasFUAy"),
+              (_("Github - Our Source Code"), "https://github.com/deepfakes/faceswap")]
 
 
 class MainMenuBar(tk.Menu):  # pylint:disable=too-many-ancestors
@@ -56,58 +58,16 @@ class SettingsMenu(tk.Menu):  # pylint:disable=too-many-ancestors
         logger.debug("Initializing %s", self.__class__.__name__)
         super().__init__(parent, tearoff=0)
         self.root = parent.root
-        self.configs = self.scan_for_plugin_configs()
         self.build()
         logger.debug("Initialized %s", self.__class__.__name__)
-
-    def scan_for_plugin_configs(self):
-        """ Scan for config.ini file locations """
-        global _CONFIGS, _CONFIG_FILES  # pylint:disable=global-statement
-        root_path = os.path.abspath(os.path.dirname(sys.argv[0]))
-        plugins_path = os.path.join(root_path, "plugins")
-        logger.debug("Scanning path: '%s'", plugins_path)
-        configs = dict()
-        for dirpath, _, filenames in os.walk(plugins_path):
-            if "_config.py" in filenames:
-                plugin_type = os.path.split(dirpath)[-1]
-                config = self.load_config(plugin_type)
-                configs[plugin_type] = config
-        logger.debug("Configs loaded: %s", sorted(list(configs.keys())))
-        keys = list(configs.keys())
-        for key in ("extract", "train", "convert"):
-            if key in keys:
-                _CONFIG_FILES.append(keys.pop(keys.index(key)))
-        _CONFIG_FILES.extend([key for key in sorted(keys)])
-        _CONFIGS = configs
-        return configs
-
-    @staticmethod
-    def load_config(plugin_type):
-        """ Load the config to generate config file if it doesn't exist and get filename """
-        # Load config to generate default if doesn't exist
-        mod = ".".join(("plugins", plugin_type, "_config"))
-        module = import_module(mod)
-        config = module.Config(None)
-        logger.debug("Found '%s' config at '%s'", plugin_type, config.configfile)
-        return config
 
     def build(self):
         """ Add the settings menu to the menu bar """
         # pylint: disable=cell-var-from-loop
         logger.debug("Building settings menu")
-        for name in _CONFIG_FILES:
-            label = "Configure {} Plugins...".format(name.title())
-            config = self.configs[name]
-            self.add_command(
-                label=label,
-                underline=10,
-                command=lambda conf=(name, config), root=self.root: popup_config(conf, root))
-        self.add_separator()
-        conf = get_config().user_config
-        self.add_command(
-            label="GUI Settings...",
-            underline=10,
-            command=lambda conf=("GUI", conf), root=self.root: popup_config(conf, root))
+        self.add_command(label="Configure Settings...",
+                         underline=0,
+                         command=open_popup)
         logger.debug("Built settings menu")
 
 
@@ -179,7 +139,16 @@ class FileMenu(tk.Menu):  # pylint:disable=too-many-ancestors
         menu_file = os.path.join(self._config.pathcache, ".recent.json")
         if not os.path.isfile(menu_file) or os.path.getsize(menu_file) == 0:
             self.clear_recent_files(serializer, menu_file)
-        recent_files = serializer.load(menu_file)
+        try:
+            recent_files = serializer.load(menu_file)
+        except FaceswapError as err:
+            if "Error unserializing data for type" in str(err):
+                # Some reports of corruption breaking menus
+                logger.warning("There was an error opening the recent files list so it has been "
+                               "reset.")
+                self.clear_recent_files(serializer, menu_file)
+                recent_files = []
+
         logger.debug("Loaded recent files: %s", recent_files)
         removed_files = []
         for recent_item in recent_files:
@@ -378,7 +347,7 @@ class HelpMenu(tk.Menu):  # pylint:disable=too-many-ancestors
     @staticmethod
     def clear_console():
         """ Clear the console window """
-        get_config().tk_vars["consoleclear"].set(True)
+        get_config().tk_vars["console_clear"].set(True)
 
     def output_sysinfo(self):
         """ Output system information to console """
@@ -386,7 +355,7 @@ class HelpMenu(tk.Menu):  # pylint:disable=too-many-ancestors
         self.root.config(cursor="watch")
         self.clear_console()
         try:
-            from lib.sysinfo import sysinfo
+            from lib.sysinfo import sysinfo  # pylint:disable=import-outside-toplevel
             info = sysinfo
         except Exception as err:  # pylint:disable=broad-except
             info = "Error obtaining system info: {}".format(str(err))
@@ -506,7 +475,7 @@ class TaskBar(ttk.Frame):  # pylint: disable=too-many-ancestors
                              command=lambda fn=cmd, kw=kwargs: fn(**kw))
             btn.pack(side=tk.LEFT, anchor=tk.W)
             hlp = self.set_help(btntype)
-            Tooltip(btn, text=hlp, wraplength=200)
+            Tooltip(btn, text=hlp, wrap_length=200)
 
     def _task_btns(self):
         frame = ttk.Frame(self._btn_frame)
@@ -526,7 +495,7 @@ class TaskBar(ttk.Frame):  # pylint: disable=too-many-ancestors
                 command=lambda fn=cmd, kw=kwargs: fn(**kw))
             btn.pack(side=tk.LEFT, anchor=tk.W)
             hlp = self.set_help(btntype)
-            Tooltip(btn, text=hlp, wraplength=200)
+            Tooltip(btn, text=hlp, wrap_length=200)
 
     @staticmethod
     def _loader_and_kwargs(btntype):
@@ -546,41 +515,39 @@ class TaskBar(ttk.Frame):  # pylint: disable=too-many-ancestors
         # pylint: disable=cell-var-from-loop
         frame = ttk.Frame(self._btn_frame)
         frame.pack(side=tk.LEFT, anchor=tk.W, expand=False, padx=2)
-        root = get_config().root
-        for name in _CONFIG_FILES:
-            config = _CONFIGS[name]
+        for name in ("extract", "train", "convert"):
             btntype = "settings_{}".format(name)
             btntype = btntype if btntype in get_images().icons else "settings"
             logger.debug("Adding button: '%s'", btntype)
             btn = ttk.Button(
                 frame,
                 image=get_images().icons[btntype],
-                command=lambda conf=(name, config), root=root: popup_config(conf, root))
+                command=lambda n=name: open_popup(name=n))
             btn.pack(side=tk.LEFT, anchor=tk.W)
-            hlp = "Configure {} settings...".format(name.title())
-            Tooltip(btn, text=hlp, wraplength=200)
+            hlp = _("Configure {} settings...").format(name.title())
+            Tooltip(btn, text=hlp, wrap_length=200)
 
     @staticmethod
     def set_help(btntype):
         """ Set the helptext for option buttons """
         logger.debug("Setting help")
         hlp = ""
-        task = "currently selected Task" if btntype[-1] == "2" else "Project"
+        task = _("currently selected Task") if btntype[-1] == "2" else _("Project")
         if btntype.startswith("reload"):
-            hlp = "Reload {} from disk".format(task)
+            hlp = _("Reload {} from disk").format(task)
         if btntype == "new":
-            hlp = "Crate a new {}...".format(task)
+            hlp = _("Create a new {}...").format(task)
         if btntype.startswith("clear"):
-            hlp = "Reset {} to default".format(task)
+            hlp = _("Reset {} to default").format(task)
         elif btntype.startswith("save") and "_" not in btntype:
-            hlp = "Save {}".format(task)
+            hlp = _("Save {}").format(task)
         elif btntype.startswith("save_as"):
-            hlp = "Save {} as...".format(task)
+            hlp = _("Save {} as...").format(task)
         elif btntype.startswith("load"):
             msg = task
             if msg.endswith("Task"):
-                msg += " from a task or project file"
-            hlp = "Load {}...".format(msg)
+                msg += _(" from a task or project file")
+            hlp = _("Load {}...").format(msg)
         return hlp
 
     def _group_separator(self):
