@@ -1,3 +1,5 @@
+# TODO: Install visualstudio build tools for fastcluster
+# TODO: Check if we still get realtime output with Subprocess in setup.py
 !include MUI2.nsh
 !include nsDialogs.nsh
 !include winmessages.nsh
@@ -22,7 +24,7 @@ InstallDir $PROFILE\faceswap
 # Install cli flags
 !define flagsConda "/S /RegisterPython=0 /AddToPath=0 /D=$PROFILE\MiniConda3"
 !define flagsRepo "--depth 1 --no-single-branch ${wwwRepo}"
-!define flagsEnv "-y python=3.7"
+!define flagsEnv "-y python=3.13"
 
 # Folders
 Var ProgramData
@@ -118,7 +120,7 @@ Function pgPrereqCreate
 
     StrCpy $lblPos 14
     # Info Installing applications
-    ${NSD_CreateGroupBox} 5% 5% 90% 35% "The following applications will be installed"
+    ${NSD_CreateGroupBox} 1% 1% 98% 30% "The following applications will be installed"
     Pop $0
 
         ${If} $InstallConda == 1
@@ -129,43 +131,47 @@ Function pgPrereqCreate
         ${NSD_CreateLabel} 10% $lblPos% 80% 14u "Faceswap"
         Pop $0
 
-        StrCpy $lblPos 46
+        intOp $lblPos $lblPos + 15
     # Info Custom Options
-    ${NSD_CreateGroupBox} 5% 40% 90% 60% "Custom Items"
+    ${NSD_CreateGroupBox} 1% 31% 98% 65% "GPU and Location"
     Pop $0
-        ${NSD_CreateRadioButton} 10% $lblPos% 27% 11u "Setup for NVIDIA GPU"
+        ${NSD_CreateRadioButton} 4% $lblPos% 27% 20u "NVIDIA RTX 20xx +"
             Pop $ctlRadio
 		    ${NSD_AddStyle} $ctlRadio ${WS_GROUP}
-            nsDialogs::SetUserData $ctlRadio "nvidia"
+            nsDialogs::SetUserData $ctlRadio "nvidia13"
             ${NSD_OnClick} $ctlRadio RadioClick
-        ${NSD_CreateRadioButton} 40% $lblPos% 25% 11u "Setup for AMD GPU"
+        ${NSD_CreateRadioButton} 32% $lblPos% 25% 20u "Nvidia GTX 9xx - GTX 10xx"
             Pop $ctlRadio
-            nsDialogs::SetUserData $ctlRadio "amd"
+            nsDialogs::SetUserData $ctlRadio "nvidia12"
             ${NSD_OnClick} $ctlRadio RadioClick
-        ${NSD_CreateRadioButton} 70% $lblPos% 20% 11u "Setup for CPU"
+        ${NSD_CreateRadioButton} 60% $lblPos% 25% 20u "Nvidia GTX 7xx - GTX 8xx"
+            Pop $ctlRadio
+            nsDialogs::SetUserData $ctlRadio "nvidia11"
+            ${NSD_OnClick} $ctlRadio RadioClick
+        ${NSD_CreateRadioButton} 88% $lblPos% 25% 20u "CPU"
             Pop $ctlRadio
             nsDialogs::SetUserData $ctlRadio "cpu"
             ${NSD_OnClick} $ctlRadio RadioClick
 
-        intOp $lblPos $lblPos + 10
+        intOp $lblPos $lblPos + 18
 
-        ${NSD_CreateLabel} 10% $lblPos% 80% 10u "Environment Name (NB: Existing envs with this name will be deleted):"
+        ${NSD_CreateLabel} 4% $lblPos% 90% 10u "Environment Name (NB: Existing envs with this name will be deleted):"
         pop $0
         intOp $lblPos $lblPos + 7
-        ${NSD_CreateText} 10% $lblPos% 80% 11u "$envName"
+        ${NSD_CreateText} 4% $lblPos% 90% 11u "$envName"
         Pop $envName
         intOp $lblPos $lblPos + 11
 
 
         ${If} $InstallConda == 1
-            ${NSD_CreateLabel} 10% $lblPos% 80% 18u "Conda is required but could not be detected. If you have Conda already installed specify the location below, otherwise leave blank:"
+            ${NSD_CreateLabel} 4% $lblPos% 90% 18u "Conda is required but could not be detected. If you have Conda already installed specify the location below, otherwise leave blank:"
             Pop $0
             intOp $lblPos $lblPos + 13
 
-            ${NSD_CreateText} 10% $lblPos% 73% 12u ""
+            ${NSD_CreateText} 4% $lblPos% 73% 12u ""
             Pop $ctlCondaText
 
-            ${NSD_CreateButton} 83% $lblPos% 7% 12u "..."
+            ${NSD_CreateButton} 77% $lblPos% 13% 12u "..."
             Pop $ctlCondaButton
             ${NSD_OnClick} $ctlCondaButton fnc_hCtl_test_DirRequest1_Click
         ${EndIf}
@@ -200,12 +206,11 @@ FunctionEnd
 
 Function CheckSetupType
     ${If} $setupType == ""
-	    MessageBox MB_OK "Please specify whether to setup for Nvidia, AMD or CPU."
+	    MessageBox MB_OK "Please specify whether to setup for Nvidia or CPU."
 	    Abort
 	${EndIf}
     StrCpy $Log "$log(check) Setting up for: $setupType$\n"
 FunctionEnd
-
 
 Function CheckCustomCondaPath
     ${NSD_GetText} $ctlCondaText $2
@@ -223,41 +228,57 @@ Function CheckCustomCondaPath
     ${EndIf}
 FunctionEnd
 
+Function CheckConda
+    # miniconda
+    nsExec::ExecToStack "$\"$dirMiniconda\Scripts\conda.exe$\" -V"
+    pop $0
+    pop $1
+
+    nsExec::ExecToStack "$\"$dirMinicondaAll\Scripts\conda.exe$\" -V"
+    pop $2
+    pop $3
+
+    # anaconda
+    nsExec::ExecToStack "$\"$dirAnaconda\Scripts\conda.exe$\" -V"
+    pop $4
+    pop $5
+
+    nsExec::ExecToStack "$\"$dirAnacondaAll\Scripts\conda.exe$\" -V"
+    pop $6
+    pop $7
+
+    ${If} $0 == 0
+        StrCpy $dirConda "$dirMiniconda"
+        StrCpy $Log "$log(check) MiniConda installed: $1"
+    ${ElseIf} $2 == 0
+        StrCpy $dirConda "$dirMinicondaAll"
+        StrCpy $Log "$log(check) MiniConda installed: $3"
+    ${ElseIf} $4 == 0
+        StrCpy $dirConda "$dirAnaconda"
+        StrCpy $Log "$log(check) AnaConda installed: $5"
+    ${ElseIf} $6 == 0
+        StrCpy $dirConda "$dirAnacondaAll"
+        StrCpy $Log "$log(check) AnaConda installed: $7"
+    ${EndIf}
+FunctionEnd
+
 Function CheckPrerequisites
     # Conda
-        # miniconda
-        nsExec::ExecToStack "$\"$dirMiniconda\Scripts\conda.exe$\" -V"
-        pop $0
-        pop $1
+    Call CheckConda
+    Push $PROFILE
+        Call CheckForSpaces
+    Pop $R0
+    # If spaces in user profile look for and install Conda in C:
+    ${If} $dirConda == ""
+    ${AndIf} $R0 != 0
+        StrCpy $dirMiniconda "C:\Miniconda3"
+        StrCpy $dirAnaconda "C:\Anaconda3"
+        Call CheckConda
+    ${EndIf}
 
-        nsExec::ExecToStack "$\"$dirMinicondaAll\Scripts\conda.exe$\" -V"
-        pop $2
-        pop $3
-
-        # anaconda
-        nsExec::ExecToStack "$\"$dirAnaconda\Scripts\conda.exe$\" -V"
-        pop $4
-        pop $5
-
-        nsExec::ExecToStack "$\"$dirAnacondaAll\Scripts\conda.exe$\" -V"
-        pop $6
-        pop $7
-
-        ${If} $0 == 0
-            StrCpy $dirConda "$dirMiniconda"
-            StrCpy $Log "$log(check) MiniConda installed: $1"
-        ${ElseIf} $2 == 0
-            StrCpy $dirConda "$dirMinicondaAll"
-            StrCpy $Log "$log(check) MiniConda installed: $3"
-        ${ElseIf} $4 == 0
-            StrCpy $dirConda "$dirAnaconda"
-            StrCpy $Log "$log(check) AnaConda installed: $5"
-        ${ElseIf} $6 == 0
-            StrCpy $dirConda "$dirAnacondaAll"
-            StrCpy $Log "$log(check) AnaConda installed: $7"
-        ${Else}
-            StrCpy $InstallConda 1
-        ${EndIf}
+    ${If} $dirConda == ""
+        StrCpy $InstallConda 1
+    ${EndIf}
 
     # CPU Capabilities
         ${If} ${CPUSupports} "AVX2"
@@ -272,6 +293,30 @@ Function CheckPrerequisites
         ${EndIf}
 
     StrCpy $Log "$Log(check) Completed check for installed applications$\n"
+FunctionEnd
+
+Function CheckForSpaces
+# Check a string for space (Used for defining MiniConda install Location)
+    Exch $R0
+    Push $R1
+    Push $R2
+    Push $R3
+    StrCpy $R1 -1
+    StrCpy $R3 $R0
+    StrCpy $R0 0
+        loop:
+        StrCpy $R2 $R3 1 $R1
+        IntOp $R1 $R1 - 1
+        StrCmp $R2 "" done
+        StrCmp $R2 " " 0 loop
+        IntOp $R0 $R0 + 1
+    Goto loop
+    done:
+    Pop $R3
+    Pop $R2
+    Pop $R1
+    Exch $R0
+
 FunctionEnd
 
 Section Install
@@ -322,6 +367,8 @@ FunctionEnd
 Function SetEnvironment
     DetailPrint "Initializing Conda..."
     SetDetailsPrint listonly
+    ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\Scripts\conda.exe$\" tos accept"
+    pop $0
     ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\scripts\activate.bat$\" && conda update -y -n base -c defaults conda && conda deactivate"
     pop $0
     ExecDos::wait $0
@@ -331,6 +378,7 @@ Function SetEnvironment
 
     IfFileExists  "$dirConda\envs\$envName" DeleteEnv CreateEnv
         DeleteEnv:
+            DetailPrint "Removing existing Conda Virtual Environment..."
             SetDetailsPrint listonly
             ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\scripts\activate.bat$\" && conda env remove -y -n $\"$envName$\" && conda deactivate"
             pop $0
@@ -342,9 +390,23 @@ Function SetEnvironment
                 Call Abort
             ${EndIf}
 
+        # Often Conda won't actually remove the folder and some of it's contents which leads to permission problems later
+        IfFileExists  "$dirConda\envs\$envName" DeleteFolder CreateEnv
+            DeleteFolder:
+                DetailPrint "Deleting stale Conda Virtual Environment files..."
+                SetDetailsPrint listonly
+                RMDir /r "$dirConda\envs\$envName"
+                pop $0
+                SetDetailsPrint both
+                ${If} $0 != 0
+                    DetailPrint "Error deleting Conda Virtual Environment Folder"
+                    Call Abort
+                ${EndIf}
+
     CreateEnv:
         SetDetailsPrint listonly
-        ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\scripts\activate.bat$\" && conda create ${flagsEnv} -n  $\"$envName$\" && conda deactivate"
+        StrCpy $0 "${flagsEnv}"
+        ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\scripts\activate.bat$\" && conda create $0 -c conda-forge -n  $\"$envName$\" && conda deactivate"
         pop $0
         ExecDos::wait $0
         pop $0
@@ -386,11 +448,9 @@ FunctionEnd
 Function SetupFaceSwap
     DetailPrint "Setting up FaceSwap Environment... This may take a while"
     StrCpy $0 "${flagsSetup}"
-    ${If} $setupType != "cpu"
-        StrCpy $0 "$0 --$setupType"
-    ${EndIf}
+    StrCpy $0 "$0 --$setupType"
     SetDetailsPrint listonly
-    ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\scripts\activate.bat$\" && conda activate $\"$envName$\" && python $\"$INSTDIR\setup.py$\" $0 && conda deactivate"
+    ExecDos::exec /NOUNLOAD /ASYNC /DETAILED "$\"$dirConda\scripts\activate.bat$\" && conda activate $\"$envName$\" && python -u $\"$INSTDIR\setup.py$\" $0 && conda deactivate"
     pop $0
     ExecDos::wait $0
     pop $0

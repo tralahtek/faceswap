@@ -1,162 +1,209 @@
 #!/usr/bin/env python3
 """ Command Line Arguments for tools """
-from lib.cli import FaceSwapArgs
-from lib.cli import DirOrFileFullPaths, DirFullPaths, FilesFullPaths, Radio, Slider
+import sys
+import gettext
+import typing as T
 
-_HELPTEXT = "This command lets you perform various tasks pertaining to an alignments file."
+from lib.cli.args import FaceSwapArgs
+from lib.cli.actions import DirOrFileFullPaths, DirFullPaths, FileFullPaths, Radio, Slider
+from lib.utils import get_module_objects
+
+# LOCALES
+_LANG = gettext.translation("tools.alignments.cli", localedir="locales", fallback=True)
+_ = _LANG.gettext
+
+
+_HELPTEXT = _("This command lets you perform various tasks pertaining to an alignments file.")
 
 
 class AlignmentsArgs(FaceSwapArgs):
     """ Class to parse the command line arguments for Alignments tool """
 
     @staticmethod
-    def get_info():
-        """ Return command information """
-        return ("Alignments tool\nThis tool allows you to perform numerous actions on or using an "
-                "alignments file against its corresponding faceset/frame source.")
+    def get_info() -> str:
+        """ Obtain command information.
 
-    def get_argument_list(self):
-        frames_dir = " Must Pass in a frames folder/source video file (-fr)."
-        faces_dir = " Must Pass in a faces folder (-fc)."
-        frames_or_faces_dir = (" Must Pass in either a frames folder/source video file OR a"
-                               "faces folder (-fr or -fc).")
-        frames_and_faces_dir = (" Must Pass in a frames folder/source video file AND a faces "
-                                "folder (-fr and -fc).")
-        output_opts = " Use the output option (-o) to process results."
-        align_eyes = " Can optionally use the align-eyes switch (-ae)."
-        argument_list = list()
+        Returns
+        -------
+        str
+            The help text for displaying in argparses help output
+         """
+        return _("Alignments tool\nThis tool allows you to perform numerous actions on or using "
+                 "an alignments file against its corresponding faceset/frame source.")
+
+    @staticmethod
+    def get_argument_list() -> list[dict[str, T.Any]]:
+        """ Collect the argparse argument options.
+
+        Returns
+        -------
+        dict
+            The argparse command line options for processing by argparse
+        """
+        frames_dir = _(" Must Pass in a frames folder/source video file (-r).")
+        faces_dir = _(" Must Pass in a faces folder (-c).")
+        frames_or_faces_dir = _(" Must Pass in either a frames folder/source video file OR a "
+                                "faces folder (-r or -c).")
+        frames_and_faces_dir = _(" Must Pass in a frames folder/source video file AND a faces "
+                                 "folder (-r and -c).")
+        output_opts = _(" Use the output option (-o) to process results.")
+        argument_list = []
         argument_list.append({
             "opts": ("-j", "--job"),
             "action": Radio,
             "type": str,
-            "choices": ("dfl", "draw", "extract", "fix", "manual", "merge", "missing-alignments",
-                        "missing-frames", "leftover-faces", "multi-faces", "no-faces",
-                        "remove-faces", "remove-frames", "rename", "sort", "spatial",
-                        "update-hashes"),
+            "choices": ("draw", "extract", "export", "from-faces", "missing-alignments",
+                        "missing-frames", "multi-faces", "no-faces", "remove-faces", "rename",
+                        "sort", "spatial"),
+            "group": _("processing"),
             "required": True,
-            "help": "R|Choose which action you want to perform. "
-                    "NB: All actions require an alignments file (-a) to be passed in."
-                    "\nL|'dfl': Create an alignments file from faces extracted from DeepFaceLab. "
-                    "Specify 'dfl' as the 'alignments file' entry and the folder containing the "
-                    "dfl faces as the 'faces folder' ('-a dfl -fc <source faces folder>'"
-                    "\nL|'draw': Draw landmarks on frames in the selected folder/video. A "
-                    "subfolder will be created within the frames folder to hold the output." +
-                    frames_dir +
-                    "\nL|'extract': Re-extract faces from the source frames/video based on "
-                    "alignment data. This is a lot quicker than re-detecting faces. Can pass in "
-                    "the '-een' (--extract-every-n) parameter to only extract every nth frame." +
-                    frames_and_faces_dir + align_eyes +
-                    # TODO - Remove the fix job after a period of time. Implemented 2019/12/07
-                    "\nL|'fix': There was a bug when extracting from video which would shift all "
-                    "the faces out by 1 frame. This was a shortlived bug, but this job will fix "
-                    "alignments files that have this issue. NB: Only run this on alignments files "
-                    "that you know need fixing."
-                    "\nL|'manual': Manually view and edit landmarks." + frames_dir +
-                    "\nL|'merge': Merge multiple alignment files into one. Specify a space "
-                    "separated list of alignments files with the -a flag. Optionally specify a "
-                    "faces (-fc) folder to filter the final alignments file to only those faces "
-                    "that appear within the provided folder."
-                    "\nL|'missing-alignments': Identify frames that do not exist in the "
-                    "alignments file." + output_opts + frames_dir +
-                    "\nL|'missing-frames': Identify frames in the alignments file that do not "
-                    "appear within the frames folder/video." + output_opts + frames_dir +
-                    "\nL|'leftover-faces': Identify faces in the faces folder that do not exist "
-                    "in the alignments file." + output_opts + faces_dir +
-                    "\nL|'multi-faces': Identify where multiple faces exist within the alignments "
-                    "file." + output_opts + frames_or_faces_dir +
-                    "\nL|'no-faces': Identify frames that exist within the alignment file but no "
-                    "faces were detected." + output_opts + frames_dir +
-                    "\nL|'remove-faces': Remove deleted faces from an alignments file. The "
-                    "original alignments file will be backed up." + faces_dir +
-                    "\nL|'remove-frames': Remove deleted frames from an alignments file. The "
-                    "original alignments file will be backed up." + frames_dir +
-                    "\nL|'rename' - Rename faces to correspond with their parent frame and "
-                    "position index in the alignments file (i.e. how they are named after running "
-                    "extract)." + faces_dir +
-                    "\nL|'sort': Re-index the alignments from left to right. For alignments "
-                    "with multiple faces this will ensure that the left-most face is at index 0 "
-                    "Optionally pass in a faces folder (-fc) to also rename extracted faces."
-                    "\nL|'spatial': Perform spatial and temporal filtering to smooth alignments "
-                    "(EXPERIMENTAL!)"
-                    "\nL|'update-hashes': Recalculate the face hashes. Only use this if you have "
-                    "altered the extracted faces (e.g. colour adjust). The files MUST be "
-                    "named '<frame_name>_face index' (i.e. how they are named after running "
-                    "extract)." + faces_dir})
-        argument_list.append({"opts": ("-a", "--alignments_file"),
-                              "action": FilesFullPaths,
-                              "dest": "alignments_file",
-                              "nargs": "+",
-                              "group": "data",
-                              "required": True,
-                              "filetypes": "alignments",
-                              "help": "Full path to the alignments file to be processed. If "
-                                      "merging alignments, then multiple files can be selected, "
-                                      "space separated"})
-        argument_list.append({"opts": ("-fc", "-faces_folder"),
-                              "action": DirFullPaths,
-                              "dest": "faces_dir",
-                              "group": "data",
-                              "help": "Directory containing extracted faces."})
-        argument_list.append({"opts": ("-fr", "-frames_folder"),
-                              "action": DirOrFileFullPaths,
-                              "dest": "frames_dir",
-                              "filetypes": "video",
-                              "group": "data",
-                              "help": "Directory containing source frames "
-                                      "that faces were extracted from."})
+            "help": _(
+                "R|Choose which action you want to perform. NB: All actions require an "
+                "alignments file (-a) to be passed in."
+                "\nL|'draw': Draw landmarks on frames in the selected folder/video. A "
+                "subfolder will be created within the frames folder to hold the output.{0}"
+                "\nL|'export': Export the contents of an alignments file to a json file. Can be "
+                "used for editing alignment information in external tools and then re-importing "
+                "by using Faceswap's Extract 'file' plugins for detector and aligner. Note: masks "
+                "and identity vectors will not be included in the exported file, so can be re-"
+                "generated when the json file is imported back into Faceswap. All data is "
+                "exported with the origin (0, 0) at the top left of the canvas."
+                "\nL|'extract': [DEPRECATED] Use 'python faceswap.py extract' instead and select "
+                "'file' as the aligner plugin. {1}"
+                "\nL|'from-faces': Generate alignment file(s) from a folder of extracted "
+                "faces. if the folder of faces comes from multiple sources, then multiple "
+                "alignments files will be created. NB: for faces which have been extracted "
+                "from folders of source images, rather than a video, a single alignments file "
+                "will be created as there is no way for the process to know how many folders "
+                "of images were originally used. You do not need to provide an alignments file "
+                "path to run this job. {3}"
+                "\nL|'missing-alignments': Identify frames that do not exist in the alignments "
+                "file.{2}{0}"
+                "\nL|'missing-frames': Identify frames in the alignments file that do not "
+                "appear within the frames folder/video.{2}{0}"
+                "\nL|'multi-faces': Identify where multiple faces exist within the alignments "
+                "file.{2}{4}"
+                "\nL|'no-faces': Identify frames that exist within the alignment file but no "
+                "faces were detected.{2}{0}"
+                "\nL|'remove-faces': Remove deleted faces from an alignments file. The "
+                "original alignments file will be backed up.{3}"
+                "\nL|'rename' - Rename faces to correspond with their parent frame and "
+                "position index in the alignments file (i.e. how they are named after running "
+                "extract).{3}"
+                "\nL|'sort': Re-index the alignments from left to right. For alignments with "
+                "multiple faces this will ensure that the left-most face is at index 0."
+                "\nL|'spatial': Perform spatial and temporal filtering to smooth alignments "
+                "(EXPERIMENTAL!)").format(frames_dir, frames_and_faces_dir, output_opts,
+                                          faces_dir, frames_or_faces_dir)})
         argument_list.append({
             "opts": ("-o", "--output"),
             "action": Radio,
             "type": str,
             "choices": ("console", "file", "move"),
-            "group": "processing",
+            "group": _("processing"),
             "default": "console",
-            "help": "R|How to output discovered items ('faces' and 'frames' only):"
-                    "\nL|'console': Print the list of frames to the screen. (DEFAULT)"
-                    "\nL|'file': Output the list of frames to a text file (stored within the "
-                    " source directory)."
-                    "\nL|'move': Move the discovered items to a sub-folder within the source "
-                    "directory."})
-        argument_list.append({"opts": ("-een", "--extract-every-n"),
-                              "type": int,
-                              "action": Slider,
-                              "dest": "extract_every_n",
-                              "min_max": (1, 100),
-                              "default": 1,
-                              "rounding": 1,
-                              "group": "extract",
-                              "help": "[Extract only] Extract every 'nth' frame. This option will "
-                                      "skip frames when extracting faces. For example a value of "
-                                      "1 will extract faces from every frame, a value of 10 will "
-                                      "extract faces from every 10th frame."})
-        argument_list.append({"opts": ("-sz", "--size"),
-                              "type": int,
-                              "action": Slider,
-                              "min_max": (128, 512),
-                              "default": 256,
-                              "group": "extract",
-                              "rounding": 64,
-                              "help": "[Extract only] The output size of extracted faces."})
-        argument_list.append({"opts": ("-ae", "--align-eyes"),
-                              "action": "store_true",
-                              "dest": "align_eyes",
-                              "group": "extract",
-                              "default": False,
-                              "help": "[Extract only] Perform extra alignment to ensure "
-                                      "left/right eyes are at the same height."})
-        argument_list.append({"opts": ("-l", "--large"),
-                              "action": "store_true",
-                              "group": "extract",
-                              "default": False,
-                              "help": "[Extract only] Only extract faces that have not been "
-                                      "upscaled to the required size (`-sz`, `--size). Useful "
-                                      "for excluding low-res images from a training set."})
-        argument_list.append({"opts": ("-dm", "--disable-monitor"),
-                              "action": "store_true",
-                              "group": "manual tool",
-                              "dest": "disable_monitor",
-                              "default": False,
-                              "help": "Enable this option if manual "
-                                      "alignments window is closing "
-                                      "instantly. (Manual only)"})
+            "help": _(
+                "R|How to output discovered items ('faces' and 'frames' only):"
+                "\nL|'console': Print the list of frames to the screen. (DEFAULT)"
+                "\nL|'file': Output the list of frames to a text file (stored within the "
+                "source directory)."
+                "\nL|'move': Move the discovered items to a sub-folder within the source "
+                "directory.")})
+        argument_list.append({
+            "opts": ("-a", "--alignments_file"),
+            "action": FileFullPaths,
+            "dest": "alignments_file",
+            "type": str,
+            "group": _("data"),
+            # hacky solution to not require alignments file if creating alignments from faces:
+            "required": not any(val in sys.argv for val in ["from-faces",
+                                                            "-r",
+                                                            "-frames_folder"]),
+            "filetypes": "alignments",
+            "help": _(
+                "Full path to the alignments file to be processed. If you have input a "
+                "'frames_dir' and don't provide this option, the process will try to find the "
+                "alignments file at the default location. All jobs require an alignments file "
+                "with the exception of 'from-faces' when the alignments file will be generated "
+                "in the specified faces folder.")})
+        argument_list.append({
+            "opts": ("-c", "-faces_folder"),
+            "action": DirFullPaths,
+            "dest": "faces_dir",
+            "group": ("data"),
+            "help": ("Directory containing extracted faces.")})
+        argument_list.append({
+            "opts": ("-r", "-frames_folder"),
+            "action": DirOrFileFullPaths,
+            "dest": "frames_dir",
+            "filetypes": "video",
+            "group": _("data"),
+            "help": _("Directory containing source frames that faces were extracted from.")})
+        argument_list.append({
+            "opts": ("-B", "--batch-mode"),
+            "action": "store_true",
+            "dest": "batch_mode",
+            "default": False,
+            "group": _("data"),
+            "help": _(
+                "R|Run the aligmnents tool on multiple sources. The following jobs support "
+                "batch mode:"
+                "\nL|draw, extract, from-faces, missing-alignments, missing-frames, no-faces, "
+                "sort, spatial."
+                "\nIf batch mode is selected then the other options should be set as follows:"
+                "\nL|alignments_file: For 'sort' and 'spatial' this should point to the parent "
+                "folder containing the alignments files to be processed. For all other jobs "
+                "this option is ignored, and the alignments files must exist at their default "
+                "location relative to the original frames folder/video."
+                "\nL|faces_dir: For 'from-faces' this should be a parent folder, containing "
+                "sub-folders of extracted faces from which to generate alignments files. For "
+                "'extract' this should be a parent folder where sub-folders will be created "
+                "for each extraction to be run. For all other jobs this option is ignored."
+                "\nL|frames_dir: For 'draw', 'extract', 'missing-alignments', 'missing-frames' "
+                "and 'no-faces' this should be a parent folder containing video files or sub-"
+                "folders of images to perform the alignments job on. The alignments file "
+                "should exist at the default location. For all other jobs this option is "
+                "ignored.")})
+        argument_list.append({
+            "opts": ("-N", "--extract-every-n"),
+            "type": int,
+            "action": Slider,
+            "dest": "extract_every_n",
+            "min_max": (1, 100),
+            "default": 1,
+            "rounding": 1,
+            "group": _("extract"),
+            "help": _(
+                "[DEPRECTATED. Extract only] Extract every 'nth' frame. This option will skip "
+                "frames when extracting faces. For example a value of 1 will extract faces from "
+                "every frame, a value of 10 will extract faces from every 10th frame.")})
+        argument_list.append({
+            "opts": ("-z", "--size"),
+            "type": int,
+            "action": Slider,
+            "min_max": (256, 1024),
+            "rounding": 64,
+            "default": 512,
+            "group": _("extract"),
+            "help": _("[DEPRECTATED. Extract only] The output size of extracted faces.")})
+        argument_list.append({
+            "opts": ("-m", "--min-size"),
+            "type": int,
+            "action": Slider,
+            "min_max": (0, 200),
+            "rounding": 1,
+            "default": 0,
+            "dest": "min_size",
+            "group": _("extract"),
+            "help": _(
+                "[DEPRECTATED. Extract only] Only extract faces that have been resized by this "
+                "percent or more to meet the specified extract size (`-z`, `--size`). Useful for "
+                "excluding low-res images from a training set. Set to 0 to extract all faces. "
+                "Eg: For an extract size of 512px, A setting of 50 will only include faces "
+                "that have been resized from 256px or above. Setting to 100 will only extract "
+                "faces that have been resized from 512px or above. A setting of 200 will only "
+                "extract faces that have been downscaled from 1024px or above.")})
         return argument_list
+
+
+__all__ = get_module_objects(__name__)

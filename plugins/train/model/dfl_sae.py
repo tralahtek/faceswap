@@ -1,188 +1,150 @@
 #!/usr/bin/env python3
-""" DeepFakesLab SAE Model
+""" DeepFaceLab SAE Model
     Based on https://github.com/iperov/DeepFaceLab
 """
+import logging
 
 import numpy as np
 
-from keras.layers import Concatenate, Dense, Flatten, Input, Reshape
-from keras.models import Model as KerasModel
+from keras import Input, layers, Model as KModel
 
-from ._base import ModelBase, logger
+from lib.model.nn_blocks import Conv2DOutput, Conv2DBlock, ResidualBlock, UpscaleBlock
+from plugins.train.train_config import Loss as cfg_loss
+
+from ._base import ModelBase
+from . import dfl_sae_defaults as cfg
+
+logger = logging.getLogger(__name__)
 
 
 class Model(ModelBase):
-    """ Low Memory version of Original Faceswap Model """
+    """ SAE Model from DFL """
     def __init__(self, *args, **kwargs):
-        logger.debug("Initializing %s: (args: %s, kwargs: %s",
-                     self.__class__.__name__, args, kwargs)
-
-        self.configfile = kwargs.get("configfile", None)
-        kwargs["input_shape"] = (self.config["input_size"], self.config["input_size"], 3)
-
         super().__init__(*args, **kwargs)
-        logger.debug("Initialized %s", self.__class__.__name__)
+        self.input_shape = (cfg.input_size(), cfg.input_size(), 3)
+        self.architecture = cfg.architecture().lower()
+        self.use_mask = cfg_loss.learn_mask()
+        self.multiscale_count = 3 if cfg.multiscale_decoder() else 1
+        self.encoder_dim = cfg.encoder_dims()
+        self.decoder_dim = cfg.decoder_dims()
 
     @property
-    def architecture(self):
-        """ Return the architecture used from config """
-        return self.config["architecture"].lower()
-
-    @property
-    def use_mask(self):
-        """ Return True if a mask has been set else false """
-        return self.config.get("learn_mask", False)
+    def model_name(self):
+        """ str: The name of the keras model. Varies depending on selected architecture. """
+        return f"{self.name}_{self.architecture}"
 
     @property
     def ae_dims(self):
         """ Set the Autoencoder Dimensions or set to default """
-        retval = self.config["autoencoder_dims"]
+        retval = cfg.autoencoder_dims()
         if retval == 0:
             retval = 256 if self.architecture == "liae" else 512
         return retval
 
     @property
-    def multiscale_count(self):
-        """ Return 3 if multiscale decoder is set else 1 """
-        retval = 3 if self.config["multiscale_decoder"] else 1
-        return retval
+    def freeze_layers(self) -> list[str]:
+        """ list[str] : The layer name for freezing based on the configured architecture """
+        return [f"encoder_{self.architecture}"]
 
-    def add_networks(self):
-        """ Add the DFL SAE Networks """
-        logger.debug("Adding networks")
-        # Encoder
-        self.add_network("encoder", None, getattr(self, "encoder_{}".format(self.architecture))())
+    @property
+    def load_layers(self) -> list[str]:
+        """ list[str] : The layer name for loading based on the configured architecture """
+        return [f"encoder_{self.architecture}"]
 
-        # Intermediate
+    def build_model(self, inputs):
+        """ Build the DFL-SAE Model """
+        encoder = getattr(self, f"encoder_{self.architecture}")()
+        enc_output_shape = encoder.output_shape[1:]
+        encoder_a = encoder(inputs[0])
+        encoder_b = encoder(inputs[1])
+
         if self.architecture == "liae":
-            self.add_network("intermediate", "b", self.inter_liae())
-            self.add_network("intermediate", None, self.inter_liae())
+            inter_both = self.inter_liae("both", enc_output_shape)
+            int_output_shape = (np.array(inter_both.output_shape[1:]) * (1, 1, 2)).tolist()
 
-        # Decoder
-        decoder_sides = [None] if self.architecture == "liae" else ["a", "b"]
-        for side in decoder_sides:
-            self.add_network("decoder", side, self.decoder(), is_output=True)
-        logger.debug("Added networks")
+            inter_a = layers.Concatenate()([inter_both(encoder_a), inter_both(encoder_a)])
+            inter_b = layers.Concatenate()([self.inter_liae("b", enc_output_shape)(encoder_b),
+                                            inter_both(encoder_b)])
 
-    def build_autoencoders(self, inputs):
-        """ Initialize DFL SAE model """
-        logger.debug("Initializing model")
-        getattr(self, "build_{}_autoencoder".format(self.architecture))(inputs)
-        logger.debug("Initialized model")
-
-    def build_liae_autoencoder(self, inputs):
-        """ Build the LIAE Autoencoder """
-        for side in ("a", "b"):
-            encoder = self.networks["encoder"].network(inputs[0])
-            if side == "a":
-                intermediate = Concatenate()([self.networks["intermediate"].network(encoder),
-                                              self.networks["intermediate"].network(encoder)])
-            else:
-                intermediate = Concatenate()([self.networks["intermediate_b"].network(encoder),
-                                              self.networks["intermediate"].network(encoder)])
-            output = self.networks["decoder"].network(intermediate)
-            autoencoder = KerasModel(inputs, output)
-            self.add_predictor(side, autoencoder)
-
-    def build_df_autoencoder(self, inputs):
-        """ Build the DF Autoencoder """
-        for side in ("a", "b"):
-            logger.debug("Adding Autoencoder. Side: %s", side)
-            decoder = self.networks["decoder_{}".format(side)].network
-            output = decoder(self.networks["encoder"].network(inputs[0]))
-            autoencoder = KerasModel(inputs, output)
-            self.add_predictor(side, autoencoder)
+            decoder = self.decoder("both", int_output_shape)
+            outputs = decoder(inter_a) + decoder(inter_b)
+        else:
+            outputs = (self.decoder("a", enc_output_shape)(encoder_a) +
+                       self.decoder("b", enc_output_shape)(encoder_b))
+        autoencoder = KModel(inputs, outputs, name=self.model_name)
+        return autoencoder
 
     def encoder_df(self):
         """ DFL SAE DF Encoder Network"""
         input_ = Input(shape=self.input_shape)
-        dims = self.input_shape[-1] * self.config["encoder_dims"]
+        dims = self.input_shape[-1] * self.encoder_dim
         lowest_dense_res = self.input_shape[0] // 16
-        var_x = input_
-        var_x = self.blocks.conv(var_x, dims)
-        var_x = self.blocks.conv(var_x, dims * 2)
-        var_x = self.blocks.conv(var_x, dims * 4)
-        var_x = self.blocks.conv(var_x, dims * 8)
-        var_x = Dense(self.ae_dims)(Flatten()(var_x))
-        var_x = Dense(lowest_dense_res * lowest_dense_res * self.ae_dims)(var_x)
-        var_x = Reshape((lowest_dense_res, lowest_dense_res, self.ae_dims))(var_x)
-        var_x = self.blocks.upscale(var_x, self.ae_dims)
-        return KerasModel(input_, var_x)
+        var_x = Conv2DBlock(dims, activation="leakyrelu")(input_)
+        var_x = Conv2DBlock(dims * 2, activation="leakyrelu")(var_x)
+        var_x = Conv2DBlock(dims * 4, activation="leakyrelu")(var_x)
+        var_x = Conv2DBlock(dims * 8, activation="leakyrelu")(var_x)
+        var_x = layers.Dense(self.ae_dims)(layers.Flatten()(var_x))
+        var_x = layers.Dense(lowest_dense_res * lowest_dense_res * self.ae_dims)(var_x)
+        var_x = layers.Reshape((lowest_dense_res, lowest_dense_res, self.ae_dims))(var_x)
+        var_x = UpscaleBlock(self.ae_dims, activation="leakyrelu")(var_x)
+        return KModel(input_, var_x, name="encoder_df")
 
     def encoder_liae(self):
         """ DFL SAE LIAE Encoder Network """
         input_ = Input(shape=self.input_shape)
-        dims = self.input_shape[-1] * self.config["encoder_dims"]
-        var_x = input_
-        var_x = self.blocks.conv(var_x, dims)
-        var_x = self.blocks.conv(var_x, dims * 2)
-        var_x = self.blocks.conv(var_x, dims * 4)
-        var_x = self.blocks.conv(var_x, dims * 8)
-        var_x = Flatten()(var_x)
-        return KerasModel(input_, var_x)
+        dims = self.input_shape[-1] * self.encoder_dim
+        var_x = Conv2DBlock(dims, activation="leakyrelu")(input_)
+        var_x = Conv2DBlock(dims * 2, activation="leakyrelu")(var_x)
+        var_x = Conv2DBlock(dims * 4, activation="leakyrelu")(var_x)
+        var_x = Conv2DBlock(dims * 8, activation="leakyrelu")(var_x)
+        var_x = layers.Flatten()(var_x)
+        return KModel(input_, var_x, name="encoder_liae")
 
-    def inter_liae(self):
+    def inter_liae(self, side, input_shape):
         """ DFL SAE LIAE Intermediate Network """
-        input_ = Input(shape=self.networks["encoder"].output_shapes[0][1:])
+        input_ = Input(shape=input_shape)
         lowest_dense_res = self.input_shape[0] // 16
         var_x = input_
-        var_x = Dense(self.ae_dims)(var_x)
-        var_x = Dense(lowest_dense_res * lowest_dense_res * self.ae_dims * 2)(var_x)
-        var_x = Reshape((lowest_dense_res, lowest_dense_res, self.ae_dims * 2))(var_x)
-        var_x = self.blocks.upscale(var_x, self.ae_dims * 2)
-        return KerasModel(input_, var_x)
+        var_x = layers.Dense(self.ae_dims)(var_x)
+        var_x = layers.Dense(lowest_dense_res * lowest_dense_res * self.ae_dims * 2)(var_x)
+        var_x = layers.Reshape((lowest_dense_res, lowest_dense_res, self.ae_dims * 2))(var_x)
+        var_x = UpscaleBlock(self.ae_dims * 2, activation="leakyrelu")(var_x)
+        return KModel(input_, var_x, name=f"intermediate_{side}")
 
-    def decoder(self):
+    def decoder(self, side, input_shape):
         """ DFL SAE Decoder Network"""
-        if self.architecture == "liae":
-            input_shape = np.array(self.networks["intermediate"].output_shapes[0][1:]) * (1, 1, 2)
-        else:
-            input_shape = self.networks["encoder"].output_shapes[0][1:]
         input_ = Input(shape=input_shape)
-        outputs = list()
+        outputs = []
 
-        dims = self.input_shape[-1] * self.config["decoder_dims"]
+        dims = self.input_shape[-1] * self.decoder_dim
         var_x = input_
 
-        var_x1 = self.blocks.upscale(var_x, dims * 8, res_block_follows=True)
-        var_x1 = self.blocks.res_block(var_x1, dims * 8)
-        var_x1 = self.blocks.res_block(var_x1, dims * 8)
+        var_x1 = UpscaleBlock(dims * 8, activation=None)(var_x)
+        var_x1 = layers.LeakyReLU(negative_slope=0.2)(var_x1)
+        var_x1 = ResidualBlock(dims * 8)(var_x1)
+        var_x1 = ResidualBlock(dims * 8)(var_x1)
         if self.multiscale_count >= 3:
-            outputs.append(self.blocks.conv2d(var_x1, 3,
-                                              kernel_size=5,
-                                              padding="same",
-                                              activation="sigmoid",
-                                              name="face_out_32"))
+            outputs.append(Conv2DOutput(3, 5, name=f"face_out_32_{side}")(var_x1))
 
-        var_x2 = self.blocks.upscale(var_x1, dims * 4, res_block_follows=True)
-        var_x2 = self.blocks.res_block(var_x2, dims * 4)
-        var_x2 = self.blocks.res_block(var_x2, dims * 4)
+        var_x2 = UpscaleBlock(dims * 4, activation=None)(var_x1)
+        var_x2 = layers.LeakyReLU(negative_slope=0.2)(var_x2)
+        var_x2 = ResidualBlock(dims * 4)(var_x2)
+        var_x2 = ResidualBlock(dims * 4)(var_x2)
         if self.multiscale_count >= 2:
-            outputs.append(self.blocks.conv2d(var_x2, 3,
-                                              kernel_size=5,
-                                              padding="same",
-                                              activation="sigmoid",
-                                              name="face_out_64"))
+            outputs.append(Conv2DOutput(3, 5, name=f"face_out_64_{side}")(var_x2))
 
-        var_x3 = self.blocks.upscale(var_x2, dims * 2, res_block_follows=True)
-        var_x3 = self.blocks.res_block(var_x3, dims * 2)
-        var_x3 = self.blocks.res_block(var_x3, dims * 2)
+        var_x3 = UpscaleBlock(dims * 2, activation=None)(var_x2)
+        var_x3 = layers.LeakyReLU(negative_slope=0.2)(var_x3)
+        var_x3 = ResidualBlock(dims * 2)(var_x3)
+        var_x3 = ResidualBlock(dims * 2)(var_x3)
 
-        outputs.append(self.blocks.conv2d(var_x3, 3,
-                                          kernel_size=5,
-                                          padding="same",
-                                          activation="sigmoid",
-                                          name="face_out_128"))
+        outputs.append(Conv2DOutput(3, 5, name=f"face_out_128_{side}")(var_x3))
 
         if self.use_mask:
             var_y = input_
-            var_y = self.blocks.upscale(var_y, self.config["decoder_dims"] * 8)
-            var_y = self.blocks.upscale(var_y, self.config["decoder_dims"] * 4)
-            var_y = self.blocks.upscale(var_y, self.config["decoder_dims"] * 2)
-            var_y = self.blocks.conv2d(var_y, 1,
-                                       kernel_size=5,
-                                       padding="same",
-                                       activation="sigmoid",
-                                       name="mask_out")
+            var_y = UpscaleBlock(self.decoder_dim * 8, activation="leakyrelu")(var_y)
+            var_y = UpscaleBlock(self.decoder_dim * 4, activation="leakyrelu")(var_y)
+            var_y = UpscaleBlock(self.decoder_dim * 2, activation="leakyrelu")(var_y)
+            var_y = Conv2DOutput(1, 5, name=f"mask_out_{side}")(var_y)
             outputs.append(var_y)
-        return KerasModel(input_, outputs=outputs)
+        return KModel(input_, outputs=outputs, name=f"decoder_{side}")

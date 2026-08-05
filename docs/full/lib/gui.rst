@@ -1,75 +1,120 @@
-***********
-gui package
-***********
+***************
+lib.gui package
+***************
 
-The GUI Package contains the entire code base for Faceswap's optional GUI. The GUI itself itself
-is largely self-generated from the command line options specified in :mod:`lib.cli`.
+The GUI Package contains the entire code base for Faceswap's optional GUI. The GUI itself
+is largely self-generated from the command line options specified in :mod:`lib.cli.args`.
 
 .. contents:: Contents
    :local:
+   :depth: 2
 
-custom\_widgets module
-======================
+analysis package
+================
 
-.. rubric:: Module Summary
+.. automodapi:: lib.gui.analysis.event_reader
+   :include-all-objects:
+   :no-inheritance-diagram:
 
-.. autosummary::
-   :nosignatures:
-   
-   ~lib.gui.custom_widgets.ConsoleOut
-   ~lib.gui.custom_widgets.ContextMenu
-   ~lib.gui.custom_widgets.RightClickMenu
-   ~lib.gui.custom_widgets.StatusBar
-   ~lib.gui.custom_widgets.Tooltip
+|
+.. automodapi:: lib.gui.analysis.stats
+   :include-all-objects:
+   :no-inheritance-diagram:
 
-.. rubric:: Module
+|
+.. automodapi:: lib.gui.analysis.moving_average
+   :include-all-objects:
+   :no-inheritance-diagram:
 
-.. automodule:: lib.gui.custom_widgets
-   :members:
-   :undoc-members:
-   :show-inheritance:
+utils package
+=============
 
-project module
-==============
+|
+.. automodapi:: lib.gui.utils.config
+   :include-all-objects:
+   :no-inheritance-diagram:
 
-.. rubric:: Module Summary
+|
+.. automodapi:: lib.gui.utils.file_handler
+   :include-all-objects:
+   :no-inheritance-diagram:
 
-.. autosummary::
-   :nosignatures:
-   
-   ~lib.gui.project.LastSession
-   ~lib.gui.project.Project
-   ~lib.gui.project.Tasks
+|
+.. automodapi:: lib.gui.utils.image
+   :include-all-objects:
+   :no-inheritance-diagram:
 
-.. rubric:: Module
-
-.. automodule:: lib.gui.project
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-utils module
-============
-
-.. rubric:: Module Summary
-
-.. autosummary::
-   :nosignatures:
-   
-   ~lib.gui.utils.Config
-   ~lib.gui.utils.FileHandler
-   ~lib.gui.utils.Images
-   ~lib.gui.utils.LongRunningTask
-   ~lib.gui.utils.get_config
-   ~lib.gui.utils.get_images
-   ~lib.gui.utils.initialize_config
-   ~lib.gui.utils.initialize_images
-
-.. rubric:: Module
-
-.. automodule:: lib.gui.utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
+|
+.. automodapi:: lib.gui.utils.misc
+   :include-all-objects:
 
 
+gui package
+===========
+
+|
+.. automodapi:: lib.gui.gui_config
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.command
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.control_helper
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.custom_widgets
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.display
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.display_analysis
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.display_command
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.display_graph
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.display_page
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.menu
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.options
+   :include-all-objects:
+   :no-inheritance-diagram:
+
+|
+.. automodapi:: lib.gui.popup_configure
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.popup_session
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.project
+   :include-all-objects:
+
+|
+.. automodapi:: lib.gui.theme
+   :include-all-objects:
+   :no-inheritance-diagram:
+
+|
+.. automodapi:: lib.gui.wrapper
+   :include-all-objects:
+   :no-inheritance-diagram:

@@ -1,58 +1,79 @@
 #!/usr/bin/env python3
 """ Command Line Arguments for tools """
-from lib.cli import FaceSwapArgs
-from lib.cli import DirOrFileFullPaths, DirFullPaths, FileFullPaths
+import gettext
+import typing as T
 
-_HELPTEXT = "This command allows you to preview swaps to tweak convert settings."
+from lib.cli.args import FaceSwapArgs
+from lib.cli.actions import DirOrFileFullPaths, DirFullPaths, FileFullPaths
+from lib.utils import get_module_objects
+
+# pylint:disable=duplicate-code
+# LOCALES
+_LANG = gettext.translation("tools.preview", localedir="locales", fallback=True)
+_ = _LANG.gettext
+
+
+_HELPTEXT = _("This command allows you to preview swaps to tweak convert settings.")
 
 
 class PreviewArgs(FaceSwapArgs):
     """ Class to parse the command line arguments for Preview (Convert Settings) tool """
 
     @staticmethod
-    def get_info():
-        """ Return command information """
-        return "Preview tool\nAllows you to configure your convert settings with a live preview"
+    def get_info() -> str:
+        """ Return command information
 
-    def get_argument_list(self):
+        Returns
+        -------
+        str
+            Top line information about the Preview tool
+        """
+        return _("Preview tool\nAllows you to configure your convert settings with a live preview")
 
-        argument_list = list()
-        argument_list.append({"opts": ("-i", "--input-dir"),
-                              "action": DirOrFileFullPaths,
-                              "filetypes": "video",
-                              "dest": "input_dir",
-                              "group": "data",
-                              "required": True,
-                              "help": "Input directory or video. Either a directory containing "
-                                      "the image files you wish to process or path to a video "
-                                      "file."})
-        argument_list.append({"opts": ("-al", "--alignments"),
-                              "action": FileFullPaths,
-                              "filetypes": "alignments",
-                              "type": str,
-                              "group": "data",
-                              "dest": "alignments_path",
-                              "help": "Path to the alignments file for the input, if not at the "
-                                      "default location"})
-        argument_list.append({"opts": ("-m", "--model-dir"),
-                              "action": DirFullPaths,
-                              "dest": "model_dir",
-                              "group": "data",
-                              "required": True,
-                              "help": "Model directory. A directory containing the trained model "
-                                      "you wish to process."})
-        argument_list.append({"opts": ("-s", "--swap-model"),
-                              "action": "store_true",
-                              "dest": "swap_model",
-                              "default": False,
-                              "help": "Swap the model. Instead of A -> B, "
-                                      "swap B -> A"})
-        argument_list.append({"opts": ("-ag", "--allow-growth"),
-                              "action": "store_true",
-                              "dest": "allow_growth",
-                              "default": False,
-                              "backend": "nvidia",
-                              "help": "Sets allow_growth option of Tensorflow to spare memory "
-                                      "on some configurations."})
+    @staticmethod
+    def get_argument_list() -> list[dict[str, T.Any]]:
+        """ Put the arguments in a list so that they are accessible from both argparse and gui
 
+        Returns
+        -------
+        list[dict[str, Any]]
+            Top command line options for the preview tool
+        """
+        argument_list = []
+        argument_list.append({
+            "opts": ("-i", "--input-dir"),
+            "action": DirOrFileFullPaths,
+            "filetypes": "video",
+            "dest": "input_dir",
+            "group": _("data"),
+            "required": True,
+            "help": _(
+                "Input directory or video. Either a directory containing the image files you wish "
+                "to process or path to a video file.")})
+        argument_list.append({
+            "opts": ("-a", "--alignments"),
+            "action": FileFullPaths,
+            "filetypes": "alignments",
+            "type": str,
+            "group": _("data"),
+            "dest": "alignments_path",
+            "help": _(
+                "Path to the alignments file for the input, if not at the default location")})
+        argument_list.append({
+            "opts": ("-m", "--model-dir"),
+            "action": DirFullPaths,
+            "dest": "model_dir",
+            "group": _("data"),
+            "required": True,
+            "help": _(
+                "Model directory. A directory containing the trained model you wish to process.")})
+        argument_list.append({
+            "opts": ("-s", "--swap-model"),
+            "action": "store_true",
+            "dest": "swap_model",
+            "default": False,
+            "help": _("Swap the model. Instead of A -> B, swap B -> A")})
         return argument_list
+
+
+__all__ = get_module_objects(__name__)

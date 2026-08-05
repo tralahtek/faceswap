@@ -1,69 +1,178 @@
 #!/usr/bin/env python3
-""" Parent class for output writers for faceswap.py converter """
+"""Parent class for output writers for faceswap.py converter"""
 
 import logging
 import os
 import re
+import typing as T
+from collections import deque
 
-from plugins.convert._config import Config
+import numpy as np
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+from lib.logger import parse_class_init
+from plugins.convert import convert_config
 
-
-def get_config(plugin_name, configfile=None):
-    """ Return the config for the requested model """
-    return Config(plugin_name, configfile=configfile).config_dict
+logger = logging.getLogger(__name__)
 
 
 class Output():
-    """ Parent class for scaling adjustments """
-    def __init__(self, output_folder, configfile=None):
-        logger.debug("Initializing %s: (output_folder: '%s')",
-                     self.__class__.__name__, output_folder)
-        self.config = get_config(".".join(self.__module__.split(".")[-2:]), configfile=configfile)
-        logger.debug("config: %s", self.config)
-        self.output_folder = output_folder
-        self.output_dimensions = None
+    """Parent class for writer plugins.
+
+    Parameters
+    ----------
+    output_folder
+        The full path to the output folder where the converted media should be saved
+    config_file
+        The full path to a custom configuration ini file. If ``None`` is passed
+        then the file is loaded from the default location. Default: ``None``.
+    """
+    def __init__(self, output_folder: str, config_file: str | None = None) -> None:
+        logger.debug(parse_class_init(locals()))
+        convert_config.load_config(config_file=config_file)
+        self.output_folder: str = output_folder
+
+        # For creating sub_folders when separate mask is selected
+        self._sub_folders_created: bool = False
 
         # Methods for making sure frames are written out in frame order
         self.re_search = re.compile(r"(\d+)(?=\.\w+$)")  # Identify frame numbers
-        self.cache = dict()  # Cache for when frames must be written in correct order
+        self.cache: dict = {}  # Cache for when frames must be written in correct order
         logger.debug("Initialized %s", self.__class__.__name__)
 
     @property
-    def is_stream(self):
-        """ Return whether the writer is a stream or images
-            Writers that write to a stream have a frame_order paramater to dictate
-            the order in which frames should be written out (eg. gif/ffmpeg) """
-        retval = hasattr(self, "frame_order")
+    def is_stream(self) -> bool:
+        """Whether the writer outputs a stream or a series images.
+
+        Writers that write to a stream have a frame_order parameter to dictate
+        the order in which frames should be written out (eg. gif/ffmpeg) """
+        retval = hasattr(self, "_frame_order")
         return retval
 
-    def output_filename(self, filename):
-        """ Return the output filename with the correct folder and extension
-            NB: The plugin must have a config item 'format' that contains the
-                file extension to use this method """
+    @property
+    def output_alpha(self) -> bool:
+        """Override if the plugin can output an alpha channel and the user configuration
+        option is set to use it. Default ``False`` """
+        return False
+
+    @classmethod
+    def _set_frame_order(cls,
+                         total_count: int,
+                         frame_ranges: list[tuple[int, int]] | None) -> deque[int]:
+        """Obtain the full list of frames to be converted in order.
+
+        Used for FFMPEG and Gif writers to ensure correct frame order
+
+        Parameters
+        ----------
+        total_count
+            The total number of frames to be converted
+        frame_ranges
+            List of tuples for starting and end values of each frame range to be converted or
+            ``None`` if all frames are to be converted
+
+        Returns
+        -------
+        Full Deque of all frame indices to be converted
+        """
+        if frame_ranges is None:
+            retval = deque(range(1, total_count + 1))
+        else:
+            retval = deque()
+            for rng in frame_ranges:
+                retval.extend(list(range(rng[0], rng[1] + 1)))
+        logger.debug("frame_order: %s", retval)
+        return retval
+
+    def get_output_filename(self,
+                            filename: str,
+                            extension: str,
+                            separate_mask: bool = False) -> list[str]:
+        """Obtain the full path for the output file, including the correct extension, for the
+        given input filename.
+
+        Parameters
+        ----------
+        filename
+            The input frame filename to generate the output file name for
+        extension
+            The extension to use for the output file
+        separate_mask
+            ``True`` if the mask should be saved out to a sub-folder otherwise ``False``
+
+        Returns
+        -------
+        The full path for the output converted frame to be saved to in position 1. The full path
+        for the mask to be output to in position 2 (if requested)
+        """
+        extension = extension.strip(".")
         filename = os.path.splitext(os.path.basename(filename))[0]
-        out_filename = "{}.{}".format(filename, self.config["format"])
-        out_filename = os.path.join(self.output_folder, out_filename)
-        logger.trace("in filename: '%s', out filename: '%s'", filename, out_filename)
-        return out_filename
+        out_filename = f"{filename}.{extension}"
+        retval = [os.path.join(self.output_folder, out_filename)]
+        if separate_mask:
+            retval.append(os.path.join(self.output_folder, "masks", out_filename))
 
-    def cache_frame(self, filename, image):
-        """ Add the incoming frame to the cache """
-        frame_no = int(re.search(self.re_search, filename).group())
+        if separate_mask and not self._sub_folders_created:
+            locations = [os.path.dirname(loc) for loc in retval]
+            logger.debug("Creating sub-folders: %s", locations)
+            for location in locations:
+                os.makedirs(location, exist_ok=True)
+
+        logger.trace("in filename: '%s', out filename: '%s'", filename, retval)  # type:ignore
+        return retval
+
+    def cache_frame(self, filename: str, image: np.ndarray) -> None:
+        """Add the incoming converted frame to the cache ready for writing out.
+
+        Used for ffmpeg and gif writers to ensure that the frames are written out in the correct
+        order.
+
+        Parameters
+        ----------
+        filename
+            The filename of the incoming frame, where the frame index can be extracted from
+        image
+            The converted frame corresponding to the given filename
+        """
+        re_frame = re.search(self.re_search, filename)
+        assert re_frame is not None
+        frame_no = int(re_frame.group())
         self.cache[frame_no] = image
-        logger.trace("Added to cache. Frame no: %s", frame_no)
-        logger.trace("Current cache: %s", sorted(self.cache.keys()))
+        logger.trace("Added to cache. Frame no: %s", frame_no)  # type: ignore
+        logger.trace("Current cache: %s", sorted(self.cache.keys()))  # type:ignore
 
-    def write(self, filename, image):
-        """ Override for specific frame writing method """
+    def write(self, filename: str, image: T.Any) -> None:
+        """Override for specific frame writing method.
+
+        Parameters
+        ----------
+        filename
+            The incoming frame filename.
+        image
+            The converted image to be written. Could be a numpy array, a bytes encoded image or
+            any other plugin specific format
+        """
         raise NotImplementedError
 
-    def pre_encode(self, image):  # pylint: disable=unused-argument,no-self-use
-        """ If the writer supports pre-encoding then override this to pre-encode
-            the image in lib/convert.py to speed up saving """
+    def pre_encode(self, image: np.ndarray, **kwargs) -> T.Any:  # pylint:disable=unused-argument
+        """ Some writer plugins support the pre-encoding of images prior to saving out. As
+        patching is done in multiple threads, but writing is done in a single thread, it can
+        speed up the process to do any pre-encoding as part of the converter process.
+
+        If the writer supports pre-encoding then override this to pre-encode the image in
+        :mod:`lib.convert` to speed up saving.
+
+        Parameters
+        ----------
+        image
+            The converted image that is to be run through the pre-encoding function
+
+        Returns
+        -------
+        If ``None`` then the writer does not support pre-encoding, otherwise return output of the
+        plugin specific pre-encode function
+        """
         return None
 
-    def close(self):
-        """ Override for specific frame writing close methods """
+    def close(self) -> None:
+        """Override for specific converted frame writing close methods"""
         raise NotImplementedError

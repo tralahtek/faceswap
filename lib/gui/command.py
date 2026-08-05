@@ -2,14 +2,22 @@
 """ The command frame for Faceswap GUI """
 
 import logging
+import gettext
 import tkinter as tk
 from tkinter import ttk
+
+from lib.utils import get_module_objects
 
 from .control_helper import ControlPanel
 from .custom_widgets import Tooltip
 from .utils import get_images, get_config
+from .options import CliOption
 
-logger = logging.getLogger(__name__)  # pylint:disable=invalid-name
+logger = logging.getLogger(__name__)
+
+# LOCALES
+_LANG = gettext.translation("gui.tooltips", localedir="locales", fallback=True)
+_ = _LANG.gettext
 
 
 class CommandNotebook(ttk.Notebook):  # pylint:disable=too-many-ancestors
@@ -17,7 +25,7 @@ class CommandNotebook(ttk.Notebook):  # pylint:disable=too-many-ancestors
 
     def __init__(self, parent):
         logger.debug("Initializing %s: (parent: %s)", self.__class__.__name__, parent)
-        self.actionbtns = dict()
+        self.actionbtns = {}
         super().__init__(parent)
         parent.add(self)
 
@@ -45,7 +53,7 @@ class CommandNotebook(ttk.Notebook):  # pylint:disable=too-many-ancestors
             to change the action buttons text and command """
         logger.debug("Set running trace")
         tk_vars = get_config().tk_vars
-        tk_vars["runningtask"].trace("w", self.change_action_button)
+        tk_vars.running_task.trace("w", self.change_action_button)
 
     def build_tabs(self):
         """ Build the tabs for the relevant command """
@@ -68,22 +76,22 @@ class CommandNotebook(ttk.Notebook):  # pylint:disable=too-many-ancestors
 
         for cmd, action in self.actionbtns.items():
             btnact = action
-            if tk_vars["runningtask"].get():
+            if tk_vars.running_task.get():
                 ttl = " Stop"
                 img = get_images().icons["stop"]
                 hlp = "Exit the running process"
             else:
-                ttl = " {}".format(cmd.title())
+                ttl = f" {cmd.title()}"
                 img = get_images().icons["start"]
-                hlp = "Run the {} script".format(cmd.title())
+                hlp = f"Run the {cmd.title()} script"
             logger.debug("Updated Action Button: '%s'", ttl)
             btnact.config(text=ttl, image=img)
-            Tooltip(btnact, text=hlp, wraplength=200)
+            Tooltip(btnact, text=hlp, wrap_length=200)
 
     def _set_modified_vars(self):
         """ Set the tkinter variable for each tab to indicate whether contents
         have been modified """
-        tkvars = dict()
+        tkvars = {}
         for tab in self.tab_names:
             if tab == "tools":
                 for ttab in self.tools_tab_names:
@@ -111,7 +119,7 @@ class CommandTab(ttk.Frame):  # pylint:disable=too-many-ancestors
     def __init__(self, parent, category, command):
         logger.debug("Initializing %s: (category: '%s', command: '%s')",
                      self.__class__.__name__, category, command)
-        super().__init__(parent, name="tab_{}".format(command.lower()))
+        super().__init__(parent, name=f"tab_{command.lower()}")
 
         self.category = category
         self.actionbtns = parent.actionbtns
@@ -124,23 +132,24 @@ class CommandTab(ttk.Frame):  # pylint:disable=too-many-ancestors
         """ Build the tab """
         logger.debug("Build Tab: '%s'", self.command)
         options = get_config().cli_opts.opts[self.command]
-        cp_opts = [val["cpanel_option"] for key, val in options.items() if key != "helptext"]
+        cp_opts = [val.panel_option for val in options.values() if isinstance(val, CliOption)]
         ControlPanel(self,
                      cp_opts,
                      label_width=16,
                      option_columns=3,
                      columns=1,
-                     header_text=options.get("helptext", None))
+                     header_text=options.get("helptext", None),
+                     style="CPanel")
         self.add_frame_separator()
         ActionFrame(self)
         logger.debug("Built Tab: '%s'", self.command)
 
     def add_frame_separator(self):
         """ Add a separator between top and bottom frames """
-        logger.debug("Add frame seperator")
+        logger.debug("Add frame separator")
         sep = ttk.Frame(self, height=2, relief=tk.RIDGE)
         sep.pack(fill=tk.X, pady=(5, 0), side=tk.TOP)
-        logger.debug("Added frame seperator")
+        logger.debug("Added frame separator")
 
 
 class ActionFrame(ttk.Frame):  # pylint:disable=too-many-ancestors
@@ -165,29 +174,32 @@ class ActionFrame(ttk.Frame):  # pylint:disable=too-many-ancestors
         actframe.pack(fill=tk.X, side=tk.RIGHT)
 
         tk_vars = get_config().tk_vars
-        var_value = "{},{}".format(category, self.command)
+        var_value = f"{category},{self.command}"
 
         btngen = ttk.Button(actframe,
                             image=get_images().icons["generate"],
                             text=" Generate",
                             compound=tk.LEFT,
                             width=14,
-                            command=lambda: tk_vars["generate"].set(var_value))
+                            command=lambda: tk_vars.generate_command.set(var_value))
         btngen.pack(side=tk.LEFT, padx=5)
         Tooltip(btngen,
-                text="Output command line options to the console",
-                wraplength=200)
+                text=_("Output command line options to the console"),
+                wrap_length=200)
 
         btnact = ttk.Button(actframe,
                             image=get_images().icons["start"],
-                            text=" {}".format(self.title),
+                            text=f" {self.title}",
                             compound=tk.LEFT,
                             width=14,
-                            command=lambda: tk_vars["action"].set(var_value))
+                            command=lambda: tk_vars.action_command.set(var_value))
         btnact.pack(side=tk.LEFT, fill=tk.X, expand=True)
         Tooltip(btnact,
-                text="Run the {} script".format(self.title),
-                wraplength=200)
+                text=_("Run the {} script").format(self.title),
+                wrap_length=200)
         actionbtns[self.command] = btnact
 
         logger.debug("Added action buttons: '%s'", self.title)
+
+
+__all__ = get_module_objects(__name__)

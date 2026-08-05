@@ -2,24 +2,24 @@
 
 **Before attempting any of this, please make sure you have read, understood and completed the [installation instructions](../master/INSTALL.md). If you are experiencing issues, please raise them in the [faceswap Forum](https://faceswap.dev/forum) or the [FaceSwap Discord server](https://discord.gg/FdEwxXd) instead of the main repo.**
 
-- [Workflow](#Workflow)
-- [Introduction](#Introduction)
-  - [Disclaimer](#Disclaimer)
-  - [Getting Started](#Getting-Started)
-- [Extract](#Extract)
-  - [Gathering raw data](#Gathering-raw-data)
-  - [Extracting Faces](#Extracting-Faces)
-  - [General Tips](#General-Tips)
-- [Training a model](#Training-a-model)
-  - [General Tips](#General-Tips-1)
-- [Converting a video](#Converting-a-video)
-  - [General Tips](#General-Tips-2)
-- [GUI](#GUI)
-- [Video's](#Videos)
-- [EFFMPEG](#EFFMPEG)
-- [Extracting video frames with FFMPEG](#Extracting-video-frames-with-FFMPEG)
-- [Generating a video](#Generating-a-video)
-- [Notes](#Notes)
+- [Workflow](#workflow)
+- [Introduction](#introduction)
+  - [Disclaimer](#disclaimer)
+  - [Getting Started](#getting-started)
+- [Extract](#extract)
+  - [Gathering raw data](#gathering-raw-data)
+  - [Extracting Faces](#extracting-faces)
+  - [General Tips](#general-tips)
+- [Training a model](#training-a-model)
+  - [General Tips](#general-tips-1)
+- [Converting a video](#converting-a-video)
+  - [General Tips](#general-tips-2)
+- [GUI](#gui)
+- [Video's](#videos)
+- [EFFMPEG](#effmpeg)
+- [Extracting video frames with FFMPEG](#extracting-video-frames-with-ffmpeg)
+- [Generating a video](#generating-a-video)
+- [Notes](#notes)
   
 # Introduction
 
@@ -74,8 +74,6 @@ Note: this script will make grabbing test data much easier, but it is not perfec
 When extracting faces for training, you are looking to gather around 500 to 5000 faces for each subject you wish to train. These should be of a high quality and contain a wide variety of angles, expressions and lighting conditions. 
 
 You do not want to extract every single frame from a video for training as from frame to frame the faces will be very similar.
-
-If you plan to train with a mask or use the Warp to Landmarks option, then you will need to copy the output `alignments.json` file from your source frames folder into your output faces folder for training. If you have extracted from multiple sources, you can use the alignments tool to merge several `alignments.json` files together.
 
 You can see the full list of arguments for extracting by hovering over the options in the GUI or passing the help flag. i.e:
 ```bash
@@ -149,7 +147,7 @@ It should now start swapping faces of all these pictures.
 
 
 ## General Tips
-You can see the full list of arguments for training by hovering over the options in the GUI or passing the help flag. i.e:
+You can see the full list of arguments for Converting by hovering over the options in the GUI or passing the help flag. i.e:
 
 ```bash
 python faceswap.py convert -h
